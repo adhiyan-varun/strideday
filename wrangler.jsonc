@@ -1,0 +1,11 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "strideday",
+  "compatibility_date": "2026-10-25",
+  "assets": {
+    "directory": "./public"
+  },
+  "routes": [
+    { "pattern": "strideday.adhiyan.in", "custom_domain": true }
+  ]
+}

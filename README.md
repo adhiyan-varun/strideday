@@ -1,6 +1,6 @@
 # strideday
 
-A personal tracker for learning to skate: daily exercises (reps and timed), a manual lap timer, and progress views.
+A personal tracker for learning to skate: daily exercises (reps and timed), a manual lap timer, a multi-person stopwatch (1 to 4, default 2), and progress views.
 Single-file vanilla HTML/CSS/JS, no build step, no framework. Data is stored in `localStorage` under `strideday:v1`.
 
 Live at https://strideday.adhiyan.in (Cloudflare Workers, static assets).

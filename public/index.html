@@ -60,6 +60,12 @@ h2{font:700 24px "Barlow Condensed",sans-serif;margin:22px 0 8px}
 .bar.full{background:var(--blue)}
 .col .h{height:72px;display:flex;align-items:flex-end}.col .h .bar{width:100%}
 .tot{display:flex;justify-content:space-between;padding:6px 2px;border-bottom:1px solid var(--line)}
+.pcard{background:var(--card);border:1px solid var(--line);border-left:6px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.pcard.on{border-left-color:var(--blue)}
+.pcard input.pn{width:100%;min-height:36px;font-weight:600;background:transparent;border-color:transparent;padding:0 4px}
+.pcard input.pn:hover,.pcard input.pn:focus{border-color:var(--line)}
+.pclock{font:700 56px/1 "Barlow Condensed",sans-serif;font-variant-numeric:tabular-nums;margin:6px 0 2px}
+.pcard .lap{font-size:14px}
 @media (max-width:380px){.clock{font-size:72px}.num{font-size:40px}}
 </style>
 </head>
@@ -77,7 +83,7 @@ const defaults={ex:[
 {id:'e3',name:'Lunges',type:'count',target:20},
 {id:'e4',name:'Plank',type:'time',target:60},
 {id:'e5',name:'Single-leg balance',type:'time',target:30}],
-log:{},laps:[],len:200};
+log:{},laps:[],len:200,sw:{n:2,names:['Skater 1','Skater 2','Skater 3','Skater 4']}};
 let S=null;
 try{S=JSON.parse(localStorage.getItem(KEY))}catch(e){S=null}
 S=Object.assign(JSON.parse(JSON.stringify(defaults)),S||{});
@@ -88,6 +94,12 @@ const fmtS=s=>{s=Math.max(0,Math.floor(s));return Math.floor(s/60)+':'+String(s%
 const fmtMs=ms=>{const t=Math.floor(ms/100);return Math.floor(t/600)+':'+String(Math.floor(t/10)%60).padStart(2,'0')+'.'+(t%10)};
 let tab='today',ed=false,run=null;
 const L={run:false,t0:0,base:0,marks:[]};
+const SWMAX=4;
+if(!S.sw||!Array.isArray(S.sw.names))S.sw=JSON.parse(JSON.stringify(defaults.sw));
+S.sw.n=Math.min(SWMAX,Math.max(1,parseInt(S.sw.n)||2));
+const W=Array.from({length:SWMAX},()=>({run:false,t0:0,base:0,marks:[]}));
+const swEl=p=>p.base+(p.run?performance.now()-p.t0:0);
+const swOn=()=>W.slice(0,S.sw.n).some(p=>p.run);
 const val=(id,k)=>((S.log[k||dk()]||{})[id])||0;
 function setVal(id,v){const k=dk();S.log[k]=S.log[k]||{};S.log[k][id]=Math.max(0,Math.floor(v));save()}
 const cur=id=>run&&run.id===id?run.base+Math.floor((Date.now()-run.t0)/1000):val(id);
@@ -97,7 +109,7 @@ function stopEx(){if(run){setVal(run.id,cur(run.id));run=null}}
 function toggle(id){const was=run&&run.id===id;stopEx();if(!was)run={id,t0:Date.now(),base:val(id)};wake()}
 function adj(id,n){if(run&&run.id===id){run.base=Math.max(0,run.base+n)}else setVal(id,val(id)+n)}
 let wl=null;
-async function wake(){const need=run||L.run;try{if(need&&!wl){wl=await navigator.wakeLock.request('screen')}else if(!need&&wl){await wl.release();wl=null}}catch(e){wl=null}}
+async function wake(){const need=run||L.run||swOn();try{if(need&&!wl){wl=await navigator.wakeLock.request('screen')}else if(!need&&wl){await wl.release();wl=null}}catch(e){wl=null}}
 const elapsed=()=>L.base+(L.run?performance.now()-L.t0:0);
 const splits=()=>L.marks.map((m,i)=>m-(i?L.marks[i-1]:0));
 function viewToday(){
@@ -132,6 +144,20 @@ function viewLaps(){
   else h+=sp.map((s,i)=>({s,i})).reverse().map(o=>`<div class="lap${o.s===best?' best':''}"><span>Lap ${o.i+1}${o.s===best?' · best':''}</span><span>${fmtMs(o.s)}</span><span>${fmtMs(L.marks[o.i])}</span></div>`).join('');
   return h;
 }
+function viewSw(){
+  const n=S.sw.n;
+  let h=`<div class="len"><label for="swn">People</label><select id="swn" onchange="S.sw.n=+this.value;save();wake();render()">${[1,2,3,4].map(i=>`<option value="${i}"${i===n?' selected':''}>${i}</option>`).join('')}</select></div>
+  <div class="bigbtns"><button class="pri" data-a="swall">Start all</button><button data-a="swstopall">Stop all</button><button data-a="swresetall">Reset all</button></div>`;
+  for(let i=0;i<n;i++){
+    const p=W[i],e=swEl(p),idle=!p.run&&e===0;
+    const sp=p.marks.map((m,j)=>m-(j?p.marks[j-1]:0)),best=sp.length>1?Math.min(...sp):-1;
+    const btn=p.run?`<button class="pri" data-a="swtg" data-i="${i}">Stop</button><button data-a="swlap" data-i="${i}">Lap</button>`:`<button class="pri" data-a="swtg" data-i="${i}">${idle?'Start':'Resume'}</button><button data-a="swreset" data-i="${i}"${idle?' disabled':''}>Reset</button>`;
+    h+=`<section class="pcard${p.run?' on':''}"><input class="pn" type="text" maxlength="20" value="${esc(S.sw.names[i])}" aria-label="Name of person ${i+1}" onchange="S.sw.names[${i}]=this.value.trim()||'Skater ${i+1}';save()">
+    <div class="pclock" id="sw-${i}">${fmtMs(e)}</div><div class="ctl">${btn}</div>`+
+    sp.map((s,j)=>({s,j})).reverse().slice(0,5).map(o=>`<div class="lap${o.s===best?' best':''}"><span>Lap ${o.j+1}${o.s===best?' · best':''}</span><span>${fmtMs(o.s)}</span><span>${fmtMs(p.marks[o.j])}</span></div>`).join('')+`</section>`;
+  }
+  return h;
+}
 function viewProgress(){
   let streak=0,d=new Date();
   if(pct(dk(d))<1)d.setDate(d.getDate()-1);
@@ -147,8 +173,8 @@ function viewProgress(){
 }
 function render(){
   document.getElementById('date').textContent=new Date().toLocaleDateString(undefined,{weekday:'long',day:'numeric',month:'short'});
-  document.getElementById('nav').innerHTML=[['today','Today'],['laps','Laps'],['prog','Progress']].map(t=>`<button class="${tab===t[0]?'on':''}" data-a="tab" data-t="${t[0]}">${t[1]}</button>`).join('');
-  document.getElementById('main').innerHTML=tab==='today'?viewToday():tab==='laps'?viewLaps():viewProgress();
+  document.getElementById('nav').innerHTML=[['today','Today'],['laps','Laps'],['sw','Stopwatch'],['prog','Progress']].map(t=>`<button class="${tab===t[0]?'on':''}" data-a="tab" data-t="${t[0]}">${t[1]}</button>`).join('');
+  document.getElementById('main').innerHTML=tab==='today'?viewToday():tab==='laps'?viewLaps():tab==='sw'?viewSw():viewProgress();
 }
 document.addEventListener('click',ev=>{
   const b=ev.target.closest('[data-a]');if(!b)return;
@@ -158,6 +184,12 @@ document.addEventListener('click',ev=>{
   else if(a==='tg')toggle(id);
   else if(a==='rm'){if(run&&run.id===id)run=null;S.ex=S.ex.filter(e=>e.id!==id);save()}
   else if(a==='add'){const name=document.getElementById('nn').value.trim();if(!name)return;const type=document.getElementById('nt').value;S.ex.push({id:'e'+Date.now(),name,type,target:Math.max(1,parseInt(document.getElementById('nv').value)||(type==='time'?60:10))});save()}
+  else if(a==='swtg'){const p=W[+b.dataset.i];if(p.run){p.base=swEl(p);p.run=false}else{p.t0=performance.now();p.run=true}wake()}
+  else if(a==='swlap'){const p=W[+b.dataset.i];p.marks.push(swEl(p))}
+  else if(a==='swreset'){Object.assign(W[+b.dataset.i],{run:false,base:0,marks:[]});wake()}
+  else if(a==='swall'){const t=performance.now();W.slice(0,S.sw.n).forEach(p=>{if(!p.run){p.t0=t;p.run=true}});wake()}
+  else if(a==='swstopall'){W.forEach(p=>{if(p.run){p.base=swEl(p);p.run=false}});wake()}
+  else if(a==='swresetall'){W.forEach(p=>Object.assign(p,{run:false,base:0,marks:[]}));wake()}
   else if(a==='lstart'){L.run=true;L.t0=performance.now();wake()}
   else if(a==='llap'){L.marks.push(elapsed())}
   else if(a==='lstop'){L.base=elapsed();L.run=false;wake()}
@@ -172,6 +204,7 @@ setInterval(()=>{
     const el=document.getElementById('v-'+run.id);if(el)el.textContent=fmtS(v);
     const r=document.getElementById('r-'+run.id);if(r&&e)r.classList.toggle('done',v>=e.target);
   }else if(run){setVal(run.id,cur(run.id))}
+  if(tab==='sw')for(let i=0;i<S.sw.n;i++){if(W[i].run){const c=document.getElementById('sw-'+i);if(c)c.textContent=fmtMs(swEl(W[i]))}}
   if(L.run&&tab==='laps'){
     const c=document.getElementById('clock');if(c)c.textContent=fmtMs(elapsed());
     const n=L.marks.length,l=document.getElementById('curlap');if(l)l.textContent='Current lap '+fmtMs(elapsed()-(n?L.marks[n-1]:0));
